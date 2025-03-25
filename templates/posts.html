@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Posts</title>
+    <style>
+        /* Basic styling for demonstration */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        img {
+            max-width: 100px; /* Adjust as needed */
+            max-height: 100px; /* Adjust as needed */
+            vertical-align: middle;
+        }
+        .caption {
+            max-width: 300px; /* Adjust as needed */
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>Posts</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Post ID</th>
+                <th>User</th>
+                <th>Image</th>
+                <th>Caption</th>
+                <th>Timestamp</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for post in posts %}
+            <tr>
+                <td>{{ post.post_id }}</td>
+                <td>{{ post.user.username }}</td>
+                <td>
+                    <img src="{{ post.image_path }}" alt="Post Image">
+                </td>
+                <td class="caption">{{ post.caption }}</td>
+                <td>{{ post.timestamp }}</td>
+                <td>
+                    <a href="/edit_post/{{ post.post_id }}">Edit</a>
+                    <form action="/delete_post/{{ post.post_id }}" method="post" style="display:inline;">
+                        <input type="submit" value="Delete">
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="/">Back to Home</a>
+    <a href="/create_post">Create Post</a>
+</body>
+</html>

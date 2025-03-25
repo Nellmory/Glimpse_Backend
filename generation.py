@@ -7,10 +7,10 @@ def hash_password(password):
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
 
-def create_user(session, username, password, email, profile_pic=None):
+def create_user(session, username, password, email, profile_pic=None, status=""):
     """Создает нового пользователя."""
     hashed_password = hash_password(password)
-    new_user = User(username=username, password=hashed_password, email=email, profile_pic=profile_pic)
+    new_user = User(username=username, password=hashed_password, email=email, profile_pic=profile_pic, status=status)
     session.add(new_user)
     try:
         session.commit()
@@ -19,6 +19,23 @@ def create_user(session, username, password, email, profile_pic=None):
         session.rollback()  # Откатываем транзакцию в случае ошибки
         print(f"Ошибка при создании пользователя: {e}")
         return None
+
+
+def update_user_status(session, user_id, new_status):
+    """Обновляет статус пользователя."""
+    user = session.query(User).get(user_id)
+    if user:
+        user.status = new_status
+        try:
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            print(f"Ошибка при обновлении статуса: {e}")
+            return False
+    else:
+        print(f"Пользователь с id {user_id} не найден.")
+        return False
 
 
 def create_post(session, user_id, image_path, caption=None):
@@ -101,6 +118,10 @@ def generation(session):
     charlie = create_user(session, "charlie", "mysecret", "charlie@example.com")
 
     if alice and bob and charlie:  # Убеждаемся, что пользователи создались успешно.
+        # Обновляем статус пользователя
+        update_user_status(session, alice.user_id, "Наслаждаюсь жизнью!")
+        update_user_status(session, bob.user_id, "В отпуске!")
+
         # Создаем посты
         post1 = create_post(session, alice.user_id, "/path/to/image1.jpg", "Моя первая фотография!")
         post2 = create_post(session, bob.user_id, "/path/to/image2.jpg", "Отличный день!")

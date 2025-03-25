@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Users</title>
+</head>
+<body>
+    <h1>Users</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>User ID</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Profile Picture</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.user_id }}</td>
+                <td>{{ user.username }}</td>
+                <td>{{ user.email }}</td>
+                <td>
+                    {% if user.profile_pic %}
+                        <img src="{{ user.profile_pic }}" alt="Profile Picture" width="50">
+                    {% else %}
+                        No Picture
+                    {% endif %}
+                </td>
+                <td>{{ user.status }}</td>
+                <td>
+                    <a href="/edit_user/{{ user.user_id }}">Edit</a>
+                    <form action="/delete_user/{{ user.user_id }}" method="post" style="display:inline;">
+                        <input type="submit" value="Delete">
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="/">Back to Home</a>
+    <a href="/create_user">Create User</a>
+</body>
+</html>
