@@ -1,13 +1,16 @@
 import hashlib
+from functools import wraps
 
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
 import datetime
 import os
 import jwt
+import uuid
+from PIL import Image
 
 DATABASE_URL = "sqlite:///glimpse.db"
 
@@ -19,6 +22,10 @@ CORS(app)
 Base = declarative_base()
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "vsu_glimpse_nelly")
+
+IMAGE_STORAGE_PATH = 'C:/Users/agapo/PycharmProjects/Glimpse/images'
+BASE_URL = 'http://192.168.0.102:5000'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 
 class User(Base):
@@ -46,7 +53,7 @@ class Post(Base):
     user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
     image_path = Column(String(255), nullable=False)
     caption = Column(Text, nullable=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow())
 
     user = relationship("User", back_populates="posts")
     comments = relationship("Comment", back_populates="post")
@@ -77,7 +84,7 @@ class Comment(Base):
     post_id = Column(Integer, ForeignKey("posts.post_id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
     text = Column(Text, nullable=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow())
 
     post = relationship("Post", back_populates="comments")
     user = relationship("User", back_populates="comments")
@@ -224,9 +231,50 @@ def create_user_route():
         session.close()
 
 
+# Функция для проверки JWT
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split(" ")[1]
+        if not token:
+            return jsonify({'message': 'Token is missing!'}), 401
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            session = Session()
+            current_user = session.query(User).filter_by(user_id=data['user_id']).first()
+            if current_user:
+                kwargs['current_user'] = current_user
+            else:
+                return jsonify({'message': 'Invalid token: User not found'}), 401
+            session.close()
+        except jwt.ExpiredSignatureError:
+            return jsonify({'message': 'Token has expired!'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'message': 'Invalid token!'}), 401
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+@app.route('/api/user', methods=['GET'])
+@token_required
+def get_user(current_user):
+    """Возвращает информацию о пользователе на основе JWT."""
+    user_data = {
+        'user_id': current_user.user_id,
+        'username': current_user.username,
+        'email': current_user.email,
+        'profile_pic': current_user.profile_pic,
+        'status': current_user.status,
+    }
+    return jsonify(user_data), 200
+
+
 @app.route('/api/users/<int:user_id>/status', methods=['PUT'])
 def update_user_status_route(user_id):
-    """Обновляет статус пользователя (endpoint)."""
+    """Обновляет статус пользователя"""
     data = request.get_json()
     new_status = data.get('status')
 
@@ -422,6 +470,59 @@ def get_post_likes_count_route(post_id):
         return jsonify({'likes_count': likes_count}), 200
     finally:
         session.close()
+
+
+def allowed_file(filename):
+    return '.' in filename and \
+        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route('/upload', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image part'}), 400
+
+    image = request.files['image']
+
+    if image.filename == '':
+        return jsonify({'error': 'No selected image'}), 400
+
+    if image and allowed_file(image.filename):
+        try:
+            # Генерируем уникальное имя файла
+            file_extension = os.path.splitext(image.filename)[1].lower()
+            filename = str(uuid.uuid4()) + '.' + file_extension
+            now = datetime.datetime.now()
+            sub_directory = os.path.join(str(now.year), str(now.month))
+            save_directory = os.path.join(IMAGE_STORAGE_PATH, sub_directory)
+
+            # Создаем директорию, если ее нет
+            os.makedirs(save_directory, exist_ok=True)
+
+            file_path = os.path.join(save_directory, filename)
+
+            # Сохраняем изображение
+            img = Image.open(image)
+            img.save(file_path)
+
+            # Формируем URL изображения
+            image_url = f'{BASE_URL}/images/{sub_directory}/{filename}'  # Абсолютный URL
+
+            return jsonify({'image_url': image_url}), 200
+
+        except Exception as e:
+            return jsonify({'error': f'Error saving image: {str(e)}'}), 500
+
+    return jsonify({'error': 'Invalid file format'}), 400
+
+
+@app.route('/images/<path:image_path>')
+def serve_image(image_path):
+    #  `/images/2024/01/unique_image.jpg`
+    try:
+        return send_from_directory(IMAGE_STORAGE_PATH, image_path)
+    except FileNotFoundError:
+        return jsonify({'error': 'Image not found'}), 404
 
 
 from generation import generation, hash_password
