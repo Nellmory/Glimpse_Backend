@@ -448,6 +448,50 @@ def get_friends_posts_route(user_id):
         session.close()
 
 
+@app.route('/api/friends/<int:user_id>', methods=['GET'])
+@token_required
+def get_friends(current_user, user_id):
+    """Возвращает список друзей пользователя (только взаимные)."""
+    session = Session()
+    try:
+        # Находим всех, кто добавил user_id в друзья.
+        friendships1 = session.query(Friendship).filter(Friendship.friend_id == user_id).all()
+
+        # Создаем список потенциальных друзей (тех, кто добавил user_id)
+        potential_friend_ids = [friendship.user_id for friendship in friendships1]
+
+        # Теперь, проверяем, добавил ли user_id этих людей в друзья.
+        mutual_friend_ids = []
+        for potential_friend_id in potential_friend_ids:
+            friendship = session.query(Friendship).filter(
+                Friendship.user_id == user_id,
+                Friendship.friend_id == potential_friend_id
+            ).first()
+            if friendship:  # Если такая запись существует, значит, дружба взаимная.
+                mutual_friend_ids.append(potential_friend_id)
+
+        # Получаем информацию о взаимных друзьях.
+        friends = session.query(User).filter(User.user_id.in_(mutual_friend_ids)).all()
+
+        friends_list = []
+        for friend in friends:
+            friends_list.append({
+                'user_id': friend.user_id,
+                'username': friend.username,
+                'email': friend.email,
+                'profile_pic': friend.profile_pic,
+                'status': friend.status,
+            })
+
+        return jsonify(friends_list), 200
+
+    except Exception as e:
+        print(f"Ошибка при получении списка друзей: {e}")
+        return jsonify({'message': 'Failed to get friends'}), 500
+    finally:
+        session.close()
+
+
 @app.route('/api/posts/<int:post_id>/comments', methods=['GET'])
 def get_post_comments_route(post_id):
     """Получает комментарии к посту (endpoint)."""
@@ -477,8 +521,8 @@ def allowed_file(filename):
         filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@app.route('/upload', methods=['POST'])
-def upload_image():
+@app.route('/api/upload/<int:user_id>', methods=['POST'])
+def upload_image(user_id):
     if 'image' not in request.files:
         return jsonify({'error': 'No image part'}), 400
 
@@ -491,9 +535,11 @@ def upload_image():
         try:
             # Генерируем уникальное имя файла
             file_extension = os.path.splitext(image.filename)[1].lower()
-            filename = str(uuid.uuid4()) + '.' + file_extension
+            filename = str(uuid.uuid4()) + file_extension
+
+            # Создаем путь с годом/месяцем/днем/user_id
             now = datetime.datetime.now()
-            sub_directory = os.path.join(str(now.year), str(now.month))
+            sub_directory = os.path.join(str(now.year), str(now.month), str(now.day), str(user_id))
             save_directory = os.path.join(IMAGE_STORAGE_PATH, sub_directory)
 
             # Создаем директорию, если ее нет
@@ -516,7 +562,7 @@ def upload_image():
     return jsonify({'error': 'Invalid file format'}), 400
 
 
-@app.route('/images/<path:image_path>')
+@app.route('/api/images/<path:image_path>')
 def serve_image(image_path):
     #  `/images/2024/01/unique_image.jpg`
     try:
