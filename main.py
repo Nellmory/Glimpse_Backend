@@ -1,16 +1,17 @@
 import hashlib
 from functools import wraps
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, UniqueConstraint, func
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 import datetime
+from datetime import date
 import os
 import jwt
 import uuid
-from PIL import Image
+from PIL import Image, ExifTags
 
 DATABASE_URL = "sqlite:///glimpse.db"
 
@@ -305,10 +306,10 @@ def update_user_status_route(user_id):
 
 @app.route('/api/posts', methods=['POST'])
 def create_post_route():
-    """Создает новый пост (endpoint)."""
+    """Создает новый пост"""
     data = request.get_json()
     user_id = data.get('user_id')
-    image_path = data.get('image_path')
+    image_path = data.get('image_url')
     caption = data.get('caption')
 
     if not user_id or not image_path:
@@ -328,6 +329,33 @@ def create_post_route():
             return jsonify({'post_id': new_post.post_id, 'message': 'Post created successfully'}), 201
         else:
             return jsonify({'message': 'Failed to create post'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/posts/<int:post_id>/caption', methods=['PUT'])
+def update_post_caption_route(post_id):
+    """Обновляет подпись (caption) поста по ID"""
+    data = request.get_json()
+    new_caption = data.get('caption')
+
+    if not new_caption:
+        return jsonify({'message': 'Missing caption field'}), 400
+
+    session = Session()
+    try:
+        post = session.query(Post).filter_by(post_id=post_id).first()
+
+        if not post:
+            return jsonify({'message': 'Post not found'}), 404
+
+        post.caption = new_caption
+        session.commit()
+        return jsonify({'message': 'Caption updated successfully'}), 200
+    except Exception as e:
+        session.rollback()
+        print(f"Ошибка при обновлении подписи: {e}")
+        return jsonify({'message': 'Failed to update caption'}), 500
     finally:
         session.close()
 
@@ -419,16 +447,32 @@ def like_post_route():
         session.close()
 
 
-@app.route('/api/users/<int:user_id>/posts', methods=['GET'])
-def get_user_posts_route(user_id):
-    """Получает посты пользователя (endpoint)."""
+@app.route('/api/users/<int:user_id>/post', methods=['GET'])
+def get_user_post_route(user_id):
+    """Получает пост пользователя за сегодняшнюю дату (endpoint)."""
     session = Session()
     try:
-        posts = session.query(Post).filter(Post.user_id == user_id).order_by(Post.timestamp.desc()).all()
-        post_list = [
-            {'post_id': post.post_id, 'user_id': post.user_id, 'image_path': post.image_path, 'caption': post.caption,
-             'timestamp': post.timestamp.isoformat()} for post in posts]
+        today = date.today()
+        posts = session.query(Post).filter(
+            Post.user_id == user_id,
+            func.date(Post.timestamp) == today
+        ).order_by(Post.timestamp.desc()).all()
+
+        post_list = []
+        if posts:
+            # Предполагаем, что у пользователя может быть только один пост в день,
+            # поэтому возвращаем только первый (самый поздний)
+            post = posts[0]
+            post_list = [
+                {'post_id': post.post_id, 'user_id': post.user_id, 'image_path': post.image_path,
+                 'caption': post.caption,
+                 'timestamp': post.timestamp.isoformat()}
+            ]
+
         return jsonify(post_list), 200
+    except Exception as e:
+        print(f"Error fetching posts: {e}")
+        return jsonify({'error': 'Failed to retrieve posts'}), 500
     finally:
         session.close()
 
@@ -521,6 +565,31 @@ def allowed_file(filename):
         filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def resize_and_rotate_image(img):
+    # Получаем EXIF данные для определения ориентации
+    try:
+        for orientation in ExifTags.TAGS.keys():
+            if ExifTags.TAGS[orientation] == 'Orientation':
+                break
+        exif = dict(img._getexif().items())
+
+        if exif[orientation] == 3:
+            img = img.rotate(180, expand=True)
+        elif exif[orientation] == 6:
+            img = img.rotate(270, expand=True)
+        elif exif[orientation] == 8:
+            img = img.rotate(90, expand=True)
+    except (AttributeError, KeyError, IndexError):
+        # Изображение не содержит EXIF данных
+        pass
+
+    # Определяем новые размеры, сохраняя пропорции
+    MAX_SIZE = (1080, 1080)  # максимальный размер Instagram-подобного формата
+    img.thumbnail(MAX_SIZE, Image.Resampling.LANCZOS)
+
+    return img
+
+
 @app.route('/api/upload/<int:user_id>', methods=['POST'])
 def upload_image(user_id):
     if 'image' not in request.files:
@@ -547,14 +616,31 @@ def upload_image(user_id):
 
             file_path = os.path.join(save_directory, filename)
 
-            # Сохраняем изображение
-            img = Image.open(image)
-            img.save(file_path)
+            # Открываем и обрабатываем изображение
+            with Image.open(image) as img:
+                # Преобразуем в RGB если изображение в RGBA
+                if img.mode == 'RGBA':
+                    img = img.convert('RGB')
 
-            # Формируем URL изображения
-            image_url = f'{BASE_URL}/images/{sub_directory}/{filename}'  # Абсолютный URL
+                # Изменяем размер и поворачиваем если нужно
+                processed_img = resize_and_rotate_image(img)
 
-            return jsonify({'image_url': image_url}), 200
+                # Сохраняем с оптимизацией качества
+                processed_img.save(
+                    file_path,
+                    'JPEG',
+                    quality=85,
+                    optimize=True
+                )
+
+            # Формируем относительный путь для сохранения в базу данных
+            relative_path = f'{sub_directory}/{filename}'.replace('\\', '/')
+
+            # Для ответа клиенту формируем полный URL
+            image_url = f'{BASE_URL}/images/{relative_path}'
+
+            # Возвращаем относительный путь вместо полного URL
+            return jsonify({'image_url': relative_path}), 200
 
         except Exception as e:
             return jsonify({'error': f'Error saving image: {str(e)}'}), 500
@@ -562,13 +648,30 @@ def upload_image(user_id):
     return jsonify({'error': 'Invalid file format'}), 400
 
 
-@app.route('/api/images/<path:image_path>')
-def serve_image(image_path):
-    #  `/images/2024/01/unique_image.jpg`
+@app.route('/images/<path:image_path>', methods=['GET'])
+def get_image(image_path):
     try:
-        return send_from_directory(IMAGE_STORAGE_PATH, image_path)
-    except FileNotFoundError:
-        return jsonify({'error': 'Image not found'}), 404
+        # Формируем полный путь к файлу
+        full_path = os.path.join(IMAGE_STORAGE_PATH, image_path)
+
+        # Проверяем существование файла
+        if not os.path.exists(full_path):
+            return jsonify({'error': 'Image not found'}), 404
+
+        # Определяем тип файла
+        file_extension = os.path.splitext(full_path)[1].lower()
+        mime_type = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif'
+        }.get(file_extension, 'application/octet-stream')
+
+        # Возвращаем файл с соответствующим MIME-типом
+        return send_file(full_path, mimetype=mime_type)
+
+    except Exception as e:
+        return jsonify({'error': f'Error retrieving image: {str(e)}'}), 500
 
 
 from generation import generation, hash_password
