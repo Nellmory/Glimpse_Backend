@@ -120,7 +120,7 @@ def generation(session):
     if alice and bob and charlie:  # Убеждаемся, что пользователи создались успешно.
         # Обновляем статус пользователя
         update_user_status(session, alice.user_id, "Наслаждаюсь жизнью!")
-        update_user_status(session, bob.user_id, "В отпуске!")
+        update_user_status(session, charlie.user_id, "В отпуске!")
 
         # Создаем посты
         post1 = create_post(session, alice.user_id, "/path/to/image1.jpg", "Моя первая фотография!")
@@ -132,6 +132,7 @@ def generation(session):
             add_friend(session, alice.user_id, bob.user_id)
             add_friend(session, bob.user_id, alice.user_id)
             add_friend(session, alice.user_id, charlie.user_id)
+            add_friend(session, charlie.user_id, alice.user_id)
 
             # Комментарии
             add_comment(session, post1.post_id, bob.user_id, "Крутая фотка!")

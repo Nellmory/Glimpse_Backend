@@ -420,7 +420,7 @@ def add_comment_route():
 
 @app.route('/api/likes', methods=['POST'])
 def like_post_route():
-    """Ставит лайк посту (endpoint)."""
+    """Ставит лайк посту"""
     data = request.get_json()
     post_id = data.get('post_id')
     user_id = data.get('user_id')
@@ -447,9 +447,31 @@ def like_post_route():
         session.close()
 
 
+@app.route('/api/likes/<int:post_id>/<int:user_id>', methods=['DELETE'])
+def unlike_post_route(post_id, user_id):
+    """Удаляет лайк с поста"""
+    session = Session()
+    try:
+        like = session.query(Like).filter_by(post_id=post_id, user_id=user_id).first()
+
+        if like:
+            session.delete(like)
+            try:
+                session.commit()
+                return jsonify({'message': 'Like removed successfully'}), 200
+            except Exception as e:
+                session.rollback()
+                print(f"Ошибка при удалении лайка: {e}")
+                return jsonify({'message': 'Failed to remove like'}), 500
+        else:
+            return jsonify({'message': 'Like not found'}), 404
+    finally:
+        session.close()
+
+
 @app.route('/api/users/<int:user_id>/post', methods=['GET'])
 def get_user_post_route(user_id):
-    """Получает пост пользователя за сегодняшнюю дату (endpoint)."""
+    """Получает пост пользователя за сегодняшнюю дату"""
     session = Session()
     try:
         today = date.today()
@@ -479,7 +501,7 @@ def get_user_post_route(user_id):
 
 @app.route('/api/friends/<int:user_id>/posts', methods=['GET'])
 def get_friends_posts_route(user_id):
-    """Получает посты друзей пользователя (endpoint)."""
+    """Получает посты друзей пользователя"""
     session = Session()
     try:
         posts = session.query(Post).join(Friendship, Post.user_id == Friendship.friend_id).filter(
@@ -488,6 +510,9 @@ def get_friends_posts_route(user_id):
             {'post_id': post.post_id, 'user_id': post.user_id, 'image_path': post.image_path, 'caption': post.caption,
              'timestamp': post.timestamp.isoformat()} for post in posts]
         return jsonify(post_list), 200
+    except Exception as e:
+        print(f"Ошибка при получении постов друзей: {e}")
+        return jsonify({'message': 'Failed to get friends posts'}), 500
     finally:
         session.close()
 
@@ -538,7 +563,7 @@ def get_friends(current_user, user_id):
 
 @app.route('/api/posts/<int:post_id>/comments', methods=['GET'])
 def get_post_comments_route(post_id):
-    """Получает комментарии к посту (endpoint)."""
+    """Получает комментарии к посту"""
     session = Session()
     try:
         comments = session.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.timestamp).all()
@@ -551,11 +576,14 @@ def get_post_comments_route(post_id):
 
 @app.route('/api/posts/<int:post_id>/likes/count', methods=['GET'])
 def get_post_likes_count_route(post_id):
-    """Получает количество лайков поста (endpoint)."""
+    """Получает количество лайков поста"""
     session = Session()
     try:
         likes_count = session.query(Like).filter(Like.post_id == post_id).count()
         return jsonify({'likes_count': likes_count}), 200
+    except Exception as e:
+        print(f"Ошибка при получении лайков поста: {e}")
+        return jsonify({'message': 'Failed to get post likes'}), 500
     finally:
         session.close()
 
