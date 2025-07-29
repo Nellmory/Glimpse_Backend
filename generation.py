@@ -113,9 +113,13 @@ def get_post_likes_count(session, post_id):
 
 def generation(session):
     # Создаем пользователей
-    alice = create_user(session, "alice", "password123", "alice@example.com")
-    bob = create_user(session, "bob", "securepass", "bob@example.com")
-    charlie = create_user(session, "charlie", "mysecret", "charlie@example.com")
+    alice = create_user(session, "Alice2025", "password123", "alice@example.com")
+    bob = create_user(session, "Bob", "securepass", "bob@example.com")
+    nelly = create_user(session, "Nelly", "1234", "agapova.nelli@gmail.com")
+    daniel = create_user(session, "Daniel", "12345", "den@gmail.com")
+    dasha = create_user(session, "Dar Husan", "123456", "dar@gmail.com")
+    Lena = create_user(session, "Lena V", "1234567", "lena@gmail.com")
+    charlie = create_user(session, "CharlieXXX", "mysecret", "charlie@example.com")
 
     if alice and bob and charlie:  # Убеждаемся, что пользователи создались успешно.
         # Обновляем статус пользователя
@@ -123,24 +127,30 @@ def generation(session):
         update_user_status(session, charlie.user_id, "В отпуске!")
 
         # Создаем посты
-        post1 = create_post(session, alice.user_id, "/path/to/image1.jpg", "Моя первая фотография!")
+        post1 = create_post(session, nelly.user_id, "2025/5/29/4/img.png", "Моя первая фотография!")
         post2 = create_post(session, bob.user_id, "/path/to/image2.jpg", "Отличный день!")
-        post3 = create_post(session, alice.user_id, "/path/to/image3.jpg", "Еще одна фотка")
 
-        if post1 and post2 and post3:  # Убеждаемся, что посты создались успешно
+        if post1 and post2:  # Убеждаемся, что посты создались успешно
             # Добавляем в друзья
-            add_friend(session, alice.user_id, bob.user_id)
+            add_friend(session, nelly.user_id, bob.user_id)
+            add_friend(session, nelly.user_id, Lena.user_id)
+            add_friend(session, nelly.user_id, dasha.user_id)
+            add_friend(session, nelly.user_id, charlie.user_id)
+            add_friend(session, bob.user_id, nelly.user_id)
+            add_friend(session, Lena.user_id, nelly.user_id)
+            add_friend(session, dasha.user_id, nelly.user_id)
+            add_friend(session, charlie.user_id, nelly.user_id)
+
             add_friend(session, bob.user_id, alice.user_id)
-            add_friend(session, alice.user_id, charlie.user_id)
             add_friend(session, charlie.user_id, alice.user_id)
 
             # Комментарии
             add_comment(session, post1.post_id, bob.user_id, "Крутая фотка!")
-            add_comment(session, post1.post_id, charlie.user_id, "Согласен!")
+            #add_comment(session, post1.post_id, charlie.user_id, "Согласен!")
 
             # Лайки
             like_post(session, post1.post_id, bob.user_id)
-            like_post(session, post1.post_id, charlie.user_id)
+            #like_post(session, post1.post_id, charlie.user_id)
             like_post(session, post2.post_id, alice.user_id)
 
             # Получаем посты друзей

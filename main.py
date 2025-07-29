@@ -201,7 +201,7 @@ def check_password(password, hashed_password):
 
 @app.route('/api/users', methods=['POST'])
 def create_user_route():
-    """Создает нового пользователя (endpoint)."""
+    """Создает нового пользователя"""
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -271,6 +271,47 @@ def get_user(current_user):
         'status': current_user.status,
     }
     return jsonify(user_data), 200
+
+
+@app.route('/api/users/search', methods=['GET'])
+@token_required
+def search_users(current_user):
+    """Поиск пользователей по никнейму (исключая текущего пользователя)."""
+    session = Session()
+    try:
+        # Получаем параметр поиска из query string
+        query = request.args.get('query', '').strip()
+
+        if not query:
+            return jsonify({'message': 'Query parameter is required'}), 400
+
+        if len(query) < 2:
+            return jsonify({'message': 'Query must be at least 2 characters long'}), 400
+
+        # Ищем пользователей по никнейму (частичное совпадение, регистронезависимо)
+        # Исключаем текущего пользователя из результатов
+        users = session.query(User).filter(
+            User.username.ilike(f'%{query}%'),
+            User.user_id != current_user.user_id
+        ).all()
+
+        users_list = []
+        for user in users:
+            users_list.append({
+                'user_id': user.user_id,
+                'username': user.username,
+                'email': user.email,
+                'profile_pic': user.profile_pic,
+                'status': user.status,
+            })
+
+        return jsonify(users_list), 200
+
+    except Exception as e:
+        print(f"Ошибка при поиске пользователей: {e}")
+        return jsonify({'message': 'Failed to search users'}), 500
+    finally:
+        session.close()
 
 
 @app.route('/api/users/<int:user_id>/status', methods=['PUT'])
@@ -362,7 +403,7 @@ def update_post_caption_route(post_id):
 
 @app.route('/api/friends', methods=['POST'])
 def add_friend_route():
-    """Добавляет пользователя в друзья (endpoint)."""
+    """Добавляет пользователя в друзья"""
     data = request.get_json()
     user_id = data.get('user_id')
     friend_id = data.get('friend_id')
