@@ -134,7 +134,7 @@ def registry():
     existing_user = session.query(User).filter(User.email == email).first()
     if existing_user:
         session.close()
-        return jsonify({'message': 'Email already registered'}), 409  # Conflict
+        return jsonify({'message': 'Пользователь с такой почтой уже зарегистрирован'}), 409  # Conflict
 
     hashed_password = hash_password(password)
     new_user = User(username=username, email=email, password=hashed_password)
